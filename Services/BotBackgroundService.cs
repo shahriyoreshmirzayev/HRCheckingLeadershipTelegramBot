@@ -228,6 +228,30 @@ public class BotBackgroundService : BackgroundService
             Console.WriteLine($"Xabar yuborishda xatolik: {ex.Message}");
         }
     }
+    private async Task OnCallbackQueryReceived(ITelegramBotClient botClient, CallbackQuery callbackQuery, CancellationToken cancellationToken)
+    {
+        if (callbackQuery.Message == null)
+        {
+            Console.WriteLine("❌ Xatolik: CallbackQuery.Message null!");
+            return;
+        }
+
+        var chatId = callbackQuery.Message.Chat.Id;
+        var data = callbackQuery.Data;
+
+        Console.WriteLine($"📩 Callback Query: {data}"); // Debug uchun
+
+        if (data.StartsWith("next_"))
+        {
+            int questionIndex = int.Parse(data.Split('_')[1]) + 1;
+            await SendTestQuestionAsync(botClient, chatId, questionIndex, cancellationToken);
+        }
+        else if (data.StartsWith("rate_"))
+        {
+            await botClient.SendTextMessageAsync(chatId, "✅ Sizning bahoyingiz qabul qilindi!", cancellationToken: cancellationToken);
+        }
+    }
+
 
 
     // ✅ **Ism, familiya va otasining ismini tekshiruvchi funksiya**
