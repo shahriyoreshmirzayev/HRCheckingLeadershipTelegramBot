@@ -13,6 +13,8 @@ public class BotBackgroundService : BackgroundService
 {
     private readonly TelegramBotClient _botClient;
     private readonly Dictionary<long, CandidateInfoEntities> _userResponses = new();
+    private Dictionary<long, List<int>> userRatings = new Dictionary<long, List<int>>();
+
 
     public BotBackgroundService(TelegramBotClient botClient)
     {
@@ -87,10 +89,45 @@ public class BotBackgroundService : BackgroundService
                 int questionIndex = int.Parse(data.Split('_')[1]);
                 await SendTestQuestionAsync(botClient, chatId, questionIndex + 1, cancellationToken);
             }
+
+            else if (data.StartsWith("rate_")) // ✅ Foydalanuvchi baho qo‘yganda
+            {
+                await HandleCallbackQueryAsync(botClient, callback, cancellationToken);
+
+                // Bahoni olishga harakat qilamiz
+                if (!int.TryParse(data.Replace("rate_", ""), out int userRating))
+                {
+                    return;
+                }
+
+                // Yangi bahoni hisoblash uchun listga qo‘shamiz
+                List<int> userRatings = new List<int> { userRating };
+
+                // O‘rtacha foizni hisoblash
+                string result = await CalculateAverageRatingPercentageAsync(userRatings);
+
+                await botClient.SendTextMessageAsync(
+                    chatId: callback.Message.Chat.Id,
+                    text: result,
+                    parseMode: ParseMode.Markdown,
+                    cancellationToken: cancellationToken
+                );
+            }
+
+
+
+
+
             else if (callback.Data == "confirm_yes")
             {
                 await botClient.SendTextMessageAsync(chatId, "Tabriklayman, siz keyingi bosqichdasiz!", cancellationToken: cancellationToken);
                 _userResponses.Remove(chatId);
+                await SendQuestionInformationAsync(botClient, chatId, 0, cancellationToken);
+            }
+
+            // "Testni boshlash" tugmasi bosilganda testni yuborish
+            else if (callback.Data == "start_test")
+            {
                 await SendTestQuestionAsync(botClient, chatId, 0, cancellationToken);
             }
             else if (callback.Data == "confirm_no")
@@ -102,9 +139,6 @@ public class BotBackgroundService : BackgroundService
             }
         }
     }
-
-    //private Dictionary<long, UserResponse> _userResponses = new();
-
     private async Task ProcessUserInfo(ITelegramBotClient botClient, long chatId, string messageText, CancellationToken cancellationToken)
     {
         var userResponse = _userResponses[chatId];
@@ -171,13 +205,6 @@ public class BotBackgroundService : BackgroundService
 
             // **Admin ID-ga xabar yuborish**
             await SendUserInfoToAdmin(botClient, userResponse);
-            /*if (userResponse.Position == null)
-            {
-                userResponse.Position = messageText;
-
-                // ✅ Ma'lumotni admin va kanalga yuborish
-                await SendUserInfoToAdmin(botClient, userResponse);
-            }*/
 
 
             string confirmationMessage = $"📋 *Nomzod haqida ma'lumot*\n\n" +
@@ -205,6 +232,8 @@ public class BotBackgroundService : BackgroundService
 
     private async Task SendUserInfoToAdmin(ITelegramBotClient botClient, CandidateInfoEntities userResponse)
     {
+        
+
         long adminChatId = 1585317019; // ⬅ O'zingizning Telegram ID
         long channelChatId = -1002496370860; // ⬅ O'zingizning kanal ID
 
@@ -268,38 +297,181 @@ public class BotBackgroundService : BackgroundService
 
 
 
+    private async Task SendQuestionInformationAsync(ITelegramBotClient botClient, long chatId, int informationIndex, CancellationToken cancellationToken)
+    {
+        string message = "📝 *I. Liderlik* – rahbarlik qilish va boshqalarni ergashtira olish qobiliyati\n\n" +
+                         "📌 Yangi imkoniyatlarni ko‘radi, hodisalarning borishini o‘zgartirish, yaxshi natijalarga erishish haqida tasavvur hosil qiladi va maqsadga erishish jarayoniga boshqalarni jalb qila oladi.\n\n" +
+                         "📌 Qo‘l ostidagilarning qobiliyatlarini to‘la ro’yobga chiqarish uchun sharoit yaratadi, yordam beradi, ularga to‘sqinlik qiluvchi muammolarni hal qiladi.\n\n" +
+                         "📌 Haqiqatdan qochmaydi, qiyin qarorlar qabul qiladi, ular an’anaviy bo‘lmasa ham, lekin maqsadlarga erishishga olib keluvchi qarorlarni ko‘zlaydi.";
+
+        var inlineKeyboard = new InlineKeyboardMarkup(new[]
+        {
+            new[] { InlineKeyboardButton.WithCallbackData("✅ Testni boshlash", "start_test") }
+        }
+        );
+
+        await botClient.SendTextMessageAsync(
+            chatId: chatId,
+            text: message,
+            parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown,
+            replyMarkup: inlineKeyboard,
+            cancellationToken: cancellationToken
+        );
+    }
 
 
 
+    // ✅ Savolni jo'natish funksiyasi
     private async Task SendTestQuestionAsync(ITelegramBotClient botClient, long chatId, int questionIndex, CancellationToken cancellationToken)
     {
         var questions = new List<string>
-        {
-            "Jamoada ishlash davomida biron bir fikr yoki taklifni o‘rtaga tashlaganingiz va uni amalga oshirishda liderlikni zimmangizga olib, boshqa odamlarni jalb qilganingiz haqida gapirib bering.",
-            "Odamlar bilan bir guruhda ishlayotganingizda ularning yo‘lida turgan ba’zi muammolarni hal qilish orqali hamkasblaringizga yordam berganingiz haqida aytib bering.",
-            "Bir guruhni boshqarganingiz va bu guruh a’zolari orqali qanday natijalarga erishganingizga misol keltiring.",
-            "Muhim narsaga erishish uchun mashg‘ulishingizni xavf ostiga qo‘ygan vaqtingiz haqida aytib bering."
-        };
+    {
+        "Jamoada ishlash davomida biron bir fikr yoki taklifni o‘rtaga tashlaganingiz va uni amalga oshirishda liderlikni zimmangizga olib, boshqa odamlarni jalb qilganingiz haqida gapirib bering.",
+        "Odamlar bilan bir guruhda ishlayotganingizda ularning yo‘lida turgan ba’zi muammolarni hal qilish orqali hamkasblaringizga yordam berganingiz haqida aytib bering.",
+        "Bir guruhni boshqarganingiz va bu guruh a’zolari orqali qanday natijalarga erishganingizga misol keltiring.",
+        "Muhim narsaga erishish uchun mashg‘ulishingizni xavf ostiga qo‘ygan vaqtingiz haqida aytib bering."
+    };
 
         if (questionIndex >= questions.Count)
         {
-            await botClient.SendTextMessageAsync(chatId, "✅ Savollar tugadi! Rahmat.", cancellationToken: cancellationToken);
+            await SendFinalRatingAsync(botClient, chatId, cancellationToken);
             return;
         }
 
-        var keyboard = new InlineKeyboardMarkup(new[] {
-            new[] {
-                InlineKeyboardButton.WithCallbackData("yaxshi", $"rate_1_{questionIndex}"),
-                InlineKeyboardButton.WithCallbackData("a'lo", $"rate_2_{questionIndex}"),
-                InlineKeyboardButton.WithCallbackData("o'rtacha", $"rate_3_{questionIndex}"),
-                InlineKeyboardButton.WithCallbackData("qoniqarli", $"rate_4_{questionIndex}"),
-                InlineKeyboardButton.WithCallbackData("qoniqarsiz", $"rate_5_{questionIndex}")
-            },
-            new[] { InlineKeyboardButton.WithCallbackData("📝 Izoh qo'shish", $"comment_{questionIndex}") },
-            new[] { InlineKeyboardButton.WithCallbackData("➡️ Keyingi savol", $"next_{questionIndex}") }
-        });
 
-        await botClient.SendTextMessageAsync(chatId, questions[questionIndex], replyMarkup: keyboard, cancellationToken: cancellationToken);
+
+        var keyboard = GenerateKeyboard(questionIndex);
+        await botClient.SendTextMessageAsync(chatId, $"📝 {questions[questionIndex]}", replyMarkup: keyboard, cancellationToken: cancellationToken);
+    }
+
+    // ✅ Inline keyboard generatsiya qilish funksiyasi (1 dan 5 gacha)
+    private InlineKeyboardMarkup GenerateKeyboard(int questionIndex)
+    {
+        return new InlineKeyboardMarkup(new[]
+        {
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData("1️", $"rate_1_0{questionIndex}"),
+            InlineKeyboardButton.WithCallbackData("2️", $"rate_2_0{questionIndex}"),
+            InlineKeyboardButton.WithCallbackData("3️", $"rate_3_0{questionIndex}"),
+            InlineKeyboardButton.WithCallbackData("4️", $"rate_4_0{questionIndex}"),
+            InlineKeyboardButton.WithCallbackData("5️", $"rate_5_0{questionIndex}")
+        },
+    });
+    }
+
+    // ✅ Callback query ishlov berish
+    private async Task HandleCallbackQueryAsync(ITelegramBotClient botClient, CallbackQuery callbackQuery, CancellationToken cancellationToken)
+    {
+        var chatId = callbackQuery.Message.Chat.Id;
+        var data = callbackQuery.Data;
+
+        if (data.StartsWith("rate_"))
+        {
+            var parts = data.Split('_');
+            if (parts.Length == 3 && int.TryParse(parts[1], out int rating) && int.TryParse(parts[2], out int questionIndex))
+            {
+                if (!userRatings.ContainsKey(chatId))
+                {
+                    userRatings[chatId] = new List<int>();
+                }
+                userRatings[chatId].Add(rating); // ✅ Bahoni saqlash
+
+                await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, $"✅ Baho {rating} saqlandi!", cancellationToken: cancellationToken);
+                await SendTestQuestionAsync(botClient, chatId, questionIndex + 1, cancellationToken);
+            }
+        }
+        else if (data.StartsWith("next_"))
+        {
+            var parts = data.Split('_');
+            if (parts.Length == 2 && int.TryParse(parts[1], out int questionIndex))
+            {
+                await SendTestQuestionAsync(botClient, chatId, questionIndex + 1, cancellationToken);
+            }
+        }
+    }
+
+    private async Task SendFinalRatingAsync(ITelegramBotClient botClient, long chatId, CancellationToken cancellationToken)
+    {
+        int totalQuestions = 0;
+
+        if (userRatings.ContainsKey(chatId) && userRatings[chatId].Count > 0)
+        {
+            double averageRating = userRatings[chatId].Average();
+            string resultMessage = $"📊 Sizning umumiy bahoingiz: {averageRating:F1} / 5.0";
+
+            await botClient.SendTextMessageAsync(chatId, resultMessage, cancellationToken: cancellationToken);
+
+
+        }
+        else
+        {
+            await botClient.SendTextMessageAsync(chatId, "❌ Hech qanday baho kiritilmadi.", cancellationToken: cancellationToken);
+        }
+
+        if (userRatings.ContainsKey(chatId) && userRatings[chatId].Count > 0)
+        {
+            // Baholarni foizga aylantirish uchun sozlangan foizlar
+            var fixedPercentages = new Dictionary<int, int>
+        {
+            { 1, 20 }, { 2, 40 }, { 3, 60 }, { 4, 80 }, { 5, 100 }
+        };
+
+            double totalPercentage = 0;
+
+            foreach (var rating in userRatings[chatId])
+            {
+                if (fixedPercentages.TryGetValue(rating, out int percentage))
+                {
+                    totalPercentage += percentage;
+                }
+            }
+
+            double averagePercentage = totalPercentage / userRatings[chatId].Count;
+            double questionCoverage = (double)userRatings[chatId].Count / totalQuestions * 100;
+
+            string resultMessage = $"📊 Sizning umumiy baho foizingiz: {averagePercentage:F1}% / 100 %";
+
+            await botClient.SendTextMessageAsync(chatId, resultMessage, cancellationToken: cancellationToken);
+
+            // ✅ Baholarni tozalash
+            userRatings.Remove(chatId);
+        }
+        else
+        {
+            await botClient.SendTextMessageAsync(chatId, "❌ Hech qanday baho kiritilmadi.", cancellationToken: cancellationToken);
+        }
+    }
+
+    private async Task<string> CalculateAverageRatingPercentageAsync(List<int> userRatings)
+    {
+        await Task.Delay(10); // Asinxron ishlash uchun kichik kutish
+
+        if (userRatings == null || userRatings.Count == 0)
+            return "❌ Baholar topilmadi.";
+
+        var fixedPercentages = new Dictionary<int, int>
+    {
+        { 1, 20 }, { 2, 40 }, { 3, 60 }, { 4, 80 }, { 5, 100 }
+    };
+
+        double totalPercentage = 0;
+
+        foreach (var rating in userRatings)
+        {
+            if (fixedPercentages.TryGetValue(rating, out int percentage))
+            {
+                totalPercentage += percentage;
+            }
+            else
+            {
+                Console.WriteLine($"❌ Noto‘g‘ri baho: {rating}"); // Xatolikni tekshirish
+            }
+        }
+
+        double averagePercentage = totalPercentage / userRatings.Count;
+
+        return $"📊 *Sizning umumiy baho foizingiz:* {averagePercentage:F1}%";
     }
 
     private Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)

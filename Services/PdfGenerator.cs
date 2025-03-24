@@ -50,6 +50,8 @@ public class PdfGenerator
         {
             await botClient.SendTextMessageAsync(chatId, $"❌ Xatolik yuz berdi: {ex.Message}");
         }
+        //public static async Task SendUserProgressImageAsync(ITelegramBotClient botClient, long chatId, int percentage)
+
     }
 
     internal static string GenerateUserInfoPdf(CandidateInfoEntities userResponse)

@@ -1,5 +1,8 @@
 ﻿using CheckingLeadershipTelegramBot.Services;
 using Telegram.Bot;
+using Telegram.Bot.Types;
+using CheckingLeadershipTelegramBot.Services;
+using Telegram.Bot;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,8 +17,6 @@ builder.Services.AddSingleton<TelegramBotClient>(sp =>
 });
 
 builder.Services.AddHostedService<BotBackgroundService>(); // ✅ Long Polling uchun servis
-//builder.Services.AddHostedService<PdfGenerator>();
-
 
 var app = builder.Build();
 
